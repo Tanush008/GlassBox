@@ -1,138 +1,287 @@
 # Assignment Submission — Glassbox
 
-> **Note to self before sending this:** the brief explicitly says to keep
-> this in my own voice and not over-polish it. What's below is a
-> complete first draft covering everything they asked for - read it
-> through and rewrite the parts that don't sound like me, especially the
-> Decision-making section. Don't just paste this in as-is.
-
----
-
 ## What I built and why
 
-I built **Glassbox** - a small web app where you describe a code change
-in plain English, and watch two things happen live: a context engine
-picks which files in a demo codebase are actually relevant to your
-request (and shows its work), and a three-agent pipeline (Planner →
-Coder → Reviewer) plans, writes, and critiques the change, streaming
-every step instead of just returning a final answer.
+I built **Glassbox** — a small web app where you describe a code change in plain English, and then watch two things happen live: a context engine decides which files in a demo codebase are actually relevant to the request and shows why, while a three-agent pipeline (Planner → Coder → Reviewer) plans, writes, and critiques the change.
 
-I chose this instead of something unrelated (a quiz app, a game) because
-Superbrain's own three components - IDE, Agent, and a context-compressing
-Architecture layer - are the actual problem space I'd be working in if I
-got this role. Building a small, honest version of the same idea gave me
-something more useful to say in the product-strategy questions below
-than generic opinions would have: I ran into the same trade-offs
-(context budget vs. completeness, how many review rounds before you cut
-your losses) that a "real" version of this product has to make.
+I chose this project because the problem is close to the one Superbrain is solving. Superbrain's product is built around understanding large repositories, managing context efficiently, and then using that understanding to make code changes safely. Building a smaller version of that gave me a way to think about the same trade-offs rather than answering the product questions only from the outside.
+
+The main trade-off I ran into was that giving an agent more context is not automatically better. Too little context causes it to miss something important, but too much context increases cost and can make the reasoning less focused. I also found that adding more agent loops does not necessarily improve the result — sometimes it just creates more opportunities to spend tokens without getting meaningfully closer to a correct answer.
+
+That was the main reason I wanted Glassbox to make those decisions visible instead of hiding everything behind a final answer.
 
 ## Architecture and design
 
 Two services:
 
-- **Backend** (FastAPI + LangGraph + Groq API): a context engine
-  that scores every file in a small demo repo against the request and
-  packs the highest-scoring ones into a fixed token budget; a LangGraph
-  state machine with three nodes (Planner, Coder, Reviewer) where the
-  Reviewer can send the Coder back for another round with specific
-  feedback; a WebSocket endpoint that streams the context decision and
-  every agent step to the frontend as it happens.
-- **Frontend** (Next.js + TypeScript + Tailwind): a file explorer for
-  the demo repo, a live "context meter" showing relevance scores and
-  token compression %, and a color-coded live trace of the three
-  agents, ending in a diff view.
+* **Backend** — FastAPI + LangGraph + Groq API. The context engine scores every file in a small demo repository against the user's request and packs the highest-scoring files into a fixed token budget. The LangGraph state machine has three nodes: Planner, Coder, and Reviewer. The Reviewer can send the work back to the Coder with specific feedback for another round. A WebSocket endpoint streams the context decisions and every agent step to the frontend as they happen.
 
-Full technical detail (why LangGraph, why keyword-based scoring instead
-of embeddings, why the token counter is an estimate not a real
-tokenizer, etc.) is in the repo's `README.md`, since it got long enough
-that duplicating it here would just be noise. Short version: every
-non-obvious choice was made to keep the demo self-contained, honest
-about what it actually does, and reproducible for whoever reviews it -
-not to maximize how impressive a single feature sounds.
+* **Frontend** — Next.js + TypeScript + Tailwind. It has a file explorer for the demo repository, a live context meter showing relevance scores and estimated token compression, and a color-coded trace of the three agents, ending with a diff view.
+
+I kept the implementation intentionally small and self-contained. For example, I used keyword-based relevance scoring rather than embeddings, and the token counter is an estimate rather than a model-specific tokenizer. Those are not claims that the demo is production-ready; they are deliberate choices that make the system understandable and reproducible.
+
+The README contains the deeper technical reasoning behind those choices, including why I used LangGraph, why I chose keyword scoring for the demo, and where I would replace those decisions in a production system.
 
 ## GitHub repository
 
-`<TODO: paste your GitHub repo link here>`
+https://github.com/Tanush008/GlassBox
 
 ## Deployment
 
 `<TODO: paste your Vercel deployment link here>`
 
-*(Note: the backend that powers the live agent runs is deployed
-separately, since it needs a long-lived WebSocket connection that
-doesn't fit Vercel's serverless model - the Vercel-hosted frontend talks
-to it. Deployment instructions and the reasoning are in the README.)*
-
-## Decision-making
-
-The two decisions I'd actually want to talk through in the next round,
-because they're the ones with real trade-offs rather than obvious
-answers:
-
-**1. Keyword-overlap scoring instead of an embedding-based retriever
-for the context engine.** Embeddings would generalize better - matching
-a request that says "credentials" to a file about "passwords" without
-any shared word. But every embedding call is a network dependency, an
-API key, and money and time, and it's a black box in exactly the way
-this whole project is trying not to be. Since the entire point of
-Glassbox is *showing* why a file was picked, being able to point at the
-literal matched terms felt like the right trade for a demo, even though
-I know it's the first thing I'd swap out for a real, larger codebase.
-
-**2. Capping the Reviewer↔Coder loop instead of looping until approved.**
-An uncapped "keep revising until the reviewer is happy" loop is a real
-failure mode I've hit before in agent systems - a stubborn critic and a
-coder that can't quite satisfy it will spin and burn API spend
-indefinitely. I capped it at 2 rounds by default and made the UI honest
-about which outcome happened ("Approved" vs. "Shipped after max
-rounds") rather than hiding the difference. That felt more important
-than a marginally higher approval rate.
+The frontend is deployed on Vercel. The backend is deployed separately because the live agent workflow uses a long-lived WebSocket connection, which doesn't fit naturally into Vercel's serverless execution model. The README explains the deployment setup and why I made that split.
 
 ---
 
-## Product Strategy
+# Decision-making
 
-### A. If I were building this product, what would I change or add next, and why?
+The two decisions I would most want to talk through in the next round are the ones where I had to trade off one good property against another.
 
-The core claim - "60 to 80 percent token savings while keeping full
-repo awareness" - has a trust problem baked in: users can't check the
-second half of that sentence. If I were leading this product, my first
-move wouldn't be a new capability, it'd be making the context engine's
-decisions inspectable - literally showing which files got pulled into
-context for a given turn, the way Glassbox does. Right now the user has
-to take "full repo awareness" on faith, and the first time the agent
-misses something obvious because a file got compressed out of context,
-that faith is gone.
+### 1. Keyword-overlap scoring instead of an embedding-based retriever
 
-Right behind that: a way to pin a file into context, or exclude one,
-instead of only ever accepting the engine's guess. The failure mode I'd
-worry about most is a relevant file (a shared config, a schema, a style
-guide) that keeps losing the relevance-scoring lottery turn after turn -
-giving the user an override turns "the tool got it wrong" into "I told
-it and it listened," which is a much better failure mode to be in.
+For the demo, I chose keyword overlap for the context engine.
 
-### B. What major UI issues do I dislike, and how do they annoy current users?
+An embedding-based retriever would be more capable. It could understand that a request about "credentials" might be relevant to a file that talks about "passwords" even when the exact words do not overlap.
 
-I'll be upfront that I wasn't able to get meaningfully hands-on with
-Superbrain itself in the time I had, so this is drawn from AI coding
-tools generally rather than Superbrain specifically - I'd want to revise
-this with real specifics once I'm actually using the product day to day.
+But there was another requirement I cared about: **Glassbox should be able to show its reasoning.**
 
-The one that bothers me most across the category: agent output arriving
-as one big diff at the end instead of a visible trace while it's
-working. You genuinely can't tell if the agent is stuck, about to do
-something you'd want to stop, or just thinking, until it's already
-done. People end up reading a large diff after the fact instead of
-steering the agent mid-task, which is a worse and more expensive way to
-catch a mistake. That's the specific problem I tried to make a small
-dent in with Glassbox's live trace.
+With keyword scoring, when a file is selected I can show the exact terms that caused it to score highly. That makes the context decision inspectable instead of presenting another black box.
 
-Second: when an agent edits the wrong file because it misjudged repo
-structure, there's usually no cheap way to say "not that one" - you
-revert everything and re-prompt with more detail, which costs both
-tokens and patience. And third: diff review inside a narrow chat-style
-sidebar, without real syntax highlighting or inline comments, makes
-reviewing a multi-file AI-written change genuinely harder than reviewing
-the same change as a normal PR - right at the moment people most need
-it to be easy, since that's when they're deciding whether to trust and
-accept the code.
+The downside is that the approach does not generalize nearly as well as semantic retrieval, especially as repositories get larger and terminology becomes less predictable. So this is one of the first things I would change in a production version.
+
+My next version would probably be a hybrid: semantic retrieval for better recall, combined with an inspectable relevance explanation and the ability for the developer to override the context engine.
+
+That last part matters to me because a context engine should not become an invisible authority over what the agent is allowed to see.
+
+### 2. Capping the Reviewer ↔ Coder loop
+
+I deliberately capped the Reviewer → Coder loop at two rounds rather than letting the system continue until the Reviewer approves the change.
+
+An unlimited loop sounds attractive because, in theory, the agents can keep refining the answer until it is correct. In practice, an agent system can get stuck in a cycle where the Reviewer keeps finding relatively small issues and the Coder keeps making small changes without converging.
+
+That creates a worse failure mode than simply stopping: the system can spend a large amount of time and API budget without producing a meaningfully better result.
+
+So I chose a fixed maximum and made the UI show which outcome happened:
+
+* **Approved**
+* **Shipped after max rounds**
+
+I preferred making that limitation visible rather than pretending both outcomes represented the same level of confidence.
+
+In a production system, I would make the loop adaptive rather than simply larger: use test failures, severity of reviewer feedback, and change magnitude to decide whether another round is actually worth the cost.
+
+---
+
+# Product Strategy
+
+## A. If I were building this product, what would I change or add next, and why?
+
+The first thing I would focus on is **making the context engine inspectable**.
+
+Superbrain's core product claim is that TokenFold can reduce token usage substantially while maintaining repository awareness. That's a compelling idea, but the difficult part from a product perspective is not the token saving — it is proving that the compression did not remove something important.
+
+If the agent gets a task wrong because an important file was compressed out of context, the user does not really care that the system saved tokens. They care that it missed the dependency that mattered.
+
+So I would make context a first-class part of the product.
+
+For every task, I would let the developer see something like:
+
+```text
+Files included
+Files excluded
+Why each file was selected
+Estimated importance
+What context was compressed
+```
+
+That gives the user a way to inspect the most important decision the system is making instead of having to trust the phrase "full repository awareness."
+
+I would then add **context controls**:
+
+* Pin a file into context
+* Exclude a file
+* Pin a directory
+* Give a file higher priority
+* Save context rules for the repository
+
+For example, if a repository has a shared `schema`, `architecture.md`, or internal style guide that is relevant to almost every task, I should not have to hope that a relevance algorithm selects it every time.
+
+The user should be able to say:
+
+> "This is always important."
+
+That changes the failure mode from *"the system ignored something important"* to *"the system followed the developer's explicit instruction."*
+
+### The next thing I would build: repository intelligence beyond file retrieval
+
+I think this is where Superbrain could become much more differentiated from a normal coding agent.
+
+Instead of only thinking about "which files should I send to the model?", the product should maintain a more structured model of the repository:
+
+```text
+Repository
+ ├── Architecture
+ ├── Dependencies
+ ├── Execution flow
+ ├── Git history
+ ├── Tests
+ ├── Engineering conventions
+ └── Known technical debt
+```
+
+Then a developer could ask:
+
+> "If I change this authentication service, what else is likely to break?"
+
+And the product could return:
+
+```text
+Potential impact:
+- 4 services
+- 12 API routes
+- 18 tests
+- 2 database models
+
+Risk:
+High
+
+Recommended tests:
+...
+```
+
+That is more useful to me than just generating code.
+
+The long-term direction I would want is for Superbrain to become an **engineering intelligence layer**, not just another coding agent.
+
+The model may change. The IDE may change. The coding agent may change.
+
+The repository understanding and engineering memory should remain.
+
+---
+
+## B. What major UI issues do I dislike, and how do they annoy current users?
+
+I want to be careful here because I wasn't able to spend enough time using Superbrain itself to claim that these are definitely current Superbrain UI bugs. The current product is also still in private beta. So these are the UI problems I see most often in AI coding tools, and the problems I would specifically look for when using Superbrain.
+
+### 1. The user sees the result, but not enough of the reasoning
+
+A common pattern is:
+
+```text
+Prompt
+↓
+Agent works
+↓
+Large diff appears
+```
+
+The problem is that the user doesn't see enough of the decisions happening in between.
+
+If the agent chooses the wrong file, makes a questionable architectural assumption, or starts heading in the wrong direction, the developer often only discovers it when the work is already finished.
+
+That's exactly the problem I was trying to address with Glassbox's live trace.
+
+I would want Superbrain to make the process visible without overwhelming the developer:
+
+```text
+Understanding repository
+↓
+Relevant files selected
+↓
+Implementation plan
+↓
+Changes proposed
+↓
+Tests
+↓
+Reviewer feedback
+```
+
+The important part is not showing every internal thought. It's showing the **useful engineering decisions and evidence**.
+
+### 2. Developers need cheap ways to correct the agent
+
+Another problem is that when an agent chooses the wrong file or makes the wrong assumption, the correction loop can be expensive.
+
+The current pattern in many tools is basically:
+
+> stop → revert → explain the problem again → rerun
+
+I would rather make correction part of the workflow.
+
+For example:
+
+> "Don't touch this file."
+
+or
+
+> "This service is read-only."
+
+or
+
+> "Always include `schema.prisma` for database-related tasks."
+
+The agent should learn that constraint immediately and continue.
+
+That makes the interaction feel more like steering an engineer than restarting a chatbot.
+
+### 3. Reviewing AI-generated changes should be as good as reviewing a normal PR
+
+The last issue is the review experience.
+
+AI-generated changes can touch many files, so the point where the developer decides whether to trust the change is extremely important.
+
+A narrow chat panel with a giant diff makes that harder.
+
+I would want the review experience to show:
+
+```text
+Files changed
+Why they changed
+Dependency impact
+Tests run
+Tests passed
+Reviewer concerns
+Potential risk
+```
+
+Then the actual diff.
+
+The goal should be to answer:
+
+> **"Why should I trust this change?"**
+
+rather than simply:
+
+> **"What code did the agent generate?"**
+
+That distinction is important to me because I think the long-term challenge for AI coding tools is not only generating code. It is helping developers make a confident decision about whether the generated change is actually safe.
+
+---
+
+# What I would measure
+
+I would also add one product metric that I think is more meaningful than token savings alone:
+
+**Successful changes per unit of context/cost.**
+
+For example:
+
+```text
+Task success rate
+Tokens used
+Cost
+Time to completion
+Tests passed
+Regression rate
+Human acceptance rate
+```
+
+A context engine that uses 50% fewer tokens but causes developers to fix its mistakes manually is not necessarily better.
+
+The real goal should be:
+
+> **minimum useful context, maximum engineering correctness.**
+
+That is the product problem I found most interesting while building Glassbox, and it is also the part of Superbrain I would be most interested in working on.
