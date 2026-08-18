@@ -8,8 +8,6 @@ venv/
 # Environment files (secrets / local config) — never commit
 .env
 .env.*
-!.env.example
-!.env.*.example
 
 # Node / Next.js
 node_modules/
