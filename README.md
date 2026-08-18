@@ -1,5 +1,7 @@
 # Glassbox
 
+[![CI](https://github.com/Tanush008/GlassBox/actions/workflows/ci.yml/badge.svg)](https://github.com/Tanush008/GlassBox/actions/workflows/ci.yml)
+
 An AI agent harness with nothing hidden. Type a change you want made to a
 small demo API, and watch two things happen live instead of behind a
 spinner:
