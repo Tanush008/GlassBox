@@ -71,7 +71,13 @@ then `docker compose up --build`.
 Check it's alive:
 ```bash
 curl http://localhost:8000/api/health
-python -m pytest backend/app/sample_repo/tests -q   # demo repo's own tests
+python -m pytest backend/tests backend/app/sample_repo/tests -q   # Glassbox's own tests + the demo repo's tests
+```
+
+Test the full agent pipeline from the terminal (no browser needed) —
+useful for debugging API key / model issues directly:
+```bash
+python backend/scripts/test_pipeline.py "add email validation on signup"
 ```
 
 **Frontend**
