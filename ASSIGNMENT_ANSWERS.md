@@ -28,7 +28,7 @@ https://github.com/Tanush008/GlassBox
 
 ## Deployment
 
-`<TODO: paste your Vercel deployment link here>`
+https://glass-box-eosin.vercel.app/
 
 The frontend is deployed on Vercel. The backend is deployed separately because the live agent workflow uses a long-lived WebSocket connection, which doesn't fit naturally into Vercel's serverless execution model. The README explains the deployment setup and why I made that split.
 
